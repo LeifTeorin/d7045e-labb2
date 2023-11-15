@@ -15,7 +15,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Moving Disks in WebGL</title>
+<title>Triangulating point</title>
 <style>
     label {
         margin-left: 30px;
@@ -45,6 +45,10 @@ const  fragmentShaderSource =
        "precision mediump float;\n" +
        "varying vec3 v_color;\n" +
        "void main() {\n" +
+       "   float distanceFromCenter = distance( gl_PointCoord, vec2(0.5,0.5) );\n" +
+       "   if ( distanceFromCenter >= 0.5) {\n" +
+       "       discard;  // don't draw this pixel!\n" +
+       "   }\n" +
        "   gl_FragColor = vec4(v_color, 1.0);\n" +
        "}\n";
 
@@ -70,8 +74,75 @@ let  animating = false;  // is the animation running?
 
 const  POINT_COUNT = 10;
 const  POINT_SIZE = 10;
-const  pointCoords = new Float32Array( 2*POINT_COUNT );
+let  pointCoords = new Float32Array( 2*POINT_COUNT );
 const  pointRandomColors = new Float32Array( 3*POINT_COUNT );
+
+function merge(left, right) {
+    let result = new Float32Array.subarray(left.length + right.length); // the sorted items will go here
+    let li = 0;
+    let ri = 0;
+    let i = 0
+    while (li < left.length || ri < right.length) {
+        // Insert the smallest item into sortedArr
+        if (left[li] < right[ri]) {
+            result[i] = left[li];
+            result[i + 1] = left[li + 1];
+            li += 2;
+        } else {
+            result[i] = right[ri];
+            result[i + 1] = right[ri + 1];
+            ri += 2;
+        }
+        i += 2;
+    }
+    // Append any remaining elements from left and right
+    while (li < left.length) {
+        result[i] = left[li];
+        result[i + 1] = left[li + 1];
+        li += 2;
+        i += 2;
+    }
+    while (ri < right.length) {
+        result[i] = right[ri];
+        result[i + 1] = right[ri + 1];
+        ri += 2;
+        i += 2;
+    }
+    // Use spread operators to create a new array, combining the three arrays
+    return result;
+}
+
+function mergeSort(arr) {
+  // Base case
+  if (arr.length <= 1) return arr;
+  let mid = Math.floor(arr.length / 2);
+  if (mid % 2 != 0) mid = mid+1;
+  // Recursive calls
+  let left = mergeSort(arr.slice(0, mid));
+  let right = mergeSort(arr.slice(mid));
+  return merge(left, right);
+}
+
+function insertionSortByX(arr) {
+    const n = arr.length;
+
+    for (let i = 2; i < n; i += 2) {
+        const currentX = arr[i];
+        const currentY = arr[i + 1];
+        let j = i - 2;
+
+        while (j >= 0 && arr[j] > currentX) {
+            arr[j + 2] = arr[j];
+            arr[j + 3] = arr[j + 1];
+            j -= 2;
+        }
+
+        arr[j + 2] = currentX;
+        arr[j + 3] = currentY;
+    }
+
+    return arr;
+}
 
 function createPointData() { // called during initialization to fill the arrays with data.
     for (let i = 0; i < POINT_COUNT; i++) {
@@ -80,6 +151,7 @@ function createPointData() { // called during initialization to fill the arrays 
         pointCoords[2*i] = canvas.width * Math.random();  // x-coordinate of point
         pointCoords[2*i+1] = canvas.height * Math.random();  // y-coordinate of point
     }
+    pointCoords = insertionSortByX(pointCoords);
 }
 
 
@@ -89,10 +161,9 @@ function createPointData() { // called during initialization to fill the arrays 
  */
 function draw() {
 
-    gl.clearColor(0.5,0.5,0.5,1);  // specify the color to be used for clearing
+    gl.clearColor(0.9,0.9,0.9,1);  // specify the color to be used for clearing
     gl.clear(gl.COLOR_BUFFER_BIT);  // clear the canvas (to black)
     
-
     gl.bindBuffer(gl.ARRAY_BUFFER, bufferCoords);
     gl.bufferData(gl.ARRAY_BUFFER, pointCoords, gl.STREAM_DRAW);
     gl.vertexAttribPointer(attributeCoords, 2, gl.FLOAT, false, 0, 0);
@@ -103,7 +174,6 @@ function draw() {
     gl.disableVertexAttribArray(attributeColor);
     gl.vertexAttrib3f(attributeColor, 0, 0, 0);
     
-    
     /* Set the pointsize uniform variable */
     
     gl.uniform1f( uniformPointsize, POINT_SIZE );
@@ -111,9 +181,16 @@ function draw() {
     /* Draw all the points with one command. */
    
     gl.drawArrays(gl.POINTS, 0, POINT_COUNT);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    drawLines();
 }
 
+function drawLines(){
+    gl.enable(gl.CULL_FACE);
+    gl.frontFace(gl.CCW);
+    for (let i = 0; i < POINT_COUNT-2; i++){
+        gl.drawArrays(gl.LINE_LOOP, i, 3);
+    }
+}
 
 
 /**
