@@ -249,93 +249,88 @@ function calculateDistance(x1, y1, x2, y2, x3, y3, px, py) {
     return Math.sqrt(Math.pow(px - centriodX, 2) + Math.pow(py - centriodY, 2));
 }
 
-function colorTriangles(triangleGraph, currentTriangle, colors, colorChoice) {
-    if (colors[currentTriangle] != []) {
-        // This triangle is already colored, stop recursion
+function colorTriangles(triangleGraph, currentTriangle, colors, colorChoice, allTriangles) {
+    if (colors[currentTriangle] !== -1) {
         return;
     }
-
     // Colors used by neighbors
-    const neighborColors = new Set();
+    let neighborColors = [];
 
     // Remove current triangle temporarily
-    const originalColor = colors[currentTriangle];
+    let originalColor = colors[currentTriangle];
     colors[currentTriangle] = -1;
-
-    // Recursive DFS for neighbors
-    for (const neighbor of triangleGraph[currentTriangle]) {
-        colorTriangles(triangleGraph, neighbor, colors, colorChoice);
-        neighborColors.add(colors[neighbor]);
+    let neighbors = triangleGraph[currentTriangle]
+    if (neighbors.length !== 0){
+        for (let i = 0; i < neighbors.length; i++) {
+            colorTriangles(triangleGraph, neighbors[i], colors, colorChoice);
+            let index = allTriangles.indexOf(neighbors[i]);
+            console.log("neighbors index: ", index)
+            neighborColors.push(colors[index]);
+        }
     }
-
     // Add current triangle back
     colors[currentTriangle] = originalColor;
 
     // Color the current triangle with an unused color
     for (let c = 0; c < 4; c++) {
-        if (!neighborColors.has(c)) {
-            colors[currentTriangle] = c;
-
+        let color = getColorForIndex(c, colorChoice);
+        if (!neighborColors.some(color2 => arraysEqual(color2, color))) {
             // Draw the triangle with the selected color
-            let color = getColorForIndex(c, colorChoice);
+            colors[currentTriangle] = color;
             gl.disableVertexAttribArray(attributeColor);
             gl.vertexAttrib3f(attributeColor, color[0], color[1], color[2]);
             gl.drawArrays(gl.TRIANGLES, 0, 3);
-
             break;
         }
     }
+    return;
+}
+
+function arraysEqual(arr1, arr2) {
+    if (arr1.length !== arr2.length) return false;
+    for (let i = 0; i < arr1.length; i++) {
+        if (arr1[i] !== arr2[i]) return false;
+    }
+    return true;
 }
 
 function getColorForIndex(index, colorChoice) {
-    // Define colors based on the chosen color mode
-    if (colorChoice === 'Same') {
-        return [0.8, 0, 0.8];
-    } else if (colorChoice === 'Distance') {
-        // Assuming you have 'dist' and 'longestDist' defined elsewhere
-        const factor = 1 - dist / longestDist;
-        return [factor, 1 - 3 * factor, factor];
-    } else if (colorChoice === '4Color') {
+    
         // Define colors for each index in the 4-coloring
-        if (index === 0) return [1, 0, 0];  // Red
-        if (index === 1) return [0, 1, 0];  // Green
-        if (index === 2) return [0, 0, 1];  // Blue
-        if (index === 3) return [1, 1, 0];  // Yellow
-    }
+    if (index === 0) return [1, 0, 0];  // Red
+    if (index === 1) return [0, 1, 0];  // Green
+    if (index === 2) return [0, 0, 1];  // Blue
+    if (index === 3) return [1, 1, 0];  // Yellow
+}
 
-    // Default color (shouldn't happen)
-    return [1, 1, 1];
+function shareEdge(triangle1, triangle2) { // Helper function to check if two triangles share an edge
+    let sharedVertices = 0;
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            if (triangle1[i * 2] === triangle2[j * 2] && triangle1[i * 2 + 1] === triangle2[j * 2 + 1]
+            ) {
+                sharedVertices++;
+            }
+        }
+    }
+    if (sharedVertices === 2){
+        return true;
+    } else {
+        return false;
+    } // Triangles share exactly two vertices
 }
 
 function buildTriangleGraph(triangleData) {
-    const triangleGraph = new Array(triangleData.length).fill([]);
-
-    // Helper function to check if two triangles share an edge
-    function shareEdge(triangle1, triangle2) {
-        let sharedVertices = 0;
-        for (let i = 0; i < 3; i++) {
-            for (let j = 0; j < 3; j++) {
-                if (
-                    triangle1[i * 2] === triangle2[j * 2] &&
-                    triangle1[i * 2 + 1] === triangle2[j * 2 + 1]
-                ) {
-                    sharedVertices++;
-                }
-            }
-        }
-        return sharedVertices === 2; // Triangles share exactly two vertices
-    }
-
+    let triangleGraph = Array.from({ length: triangleData.length }, () => []);
     // Build the triangle graph
     for (let i = 0; i < triangleData.length; i++) {
-        for (let j = i + 1; j < triangleData.length; j++) {
-            if (shareEdge(triangleData[i], triangleData[j])) {
-                triangleGraph[i].push(j);
-                triangleGraph[j].push(i);
+        for (let j = 0; j < triangleData.length; j++) {
+            if (shareEdge(triangleData[i], triangleData[j]) && i !== j) {
+                triangleGraph[i].push(triangleData[j]);
+            //    triangleGraph[j].push(triangleData[i]);
             }
         }
     }
-
     return triangleGraph;
 }
 
@@ -406,16 +401,22 @@ function draw() {
         
     }else if (colorChoice == "4Color"){
         // Assuming triangleGraph is an array of neighbors for each triangle
-        const colors = new Array(triangleData.length).fill([]);
-        const triangleGraph = buildTriangleGraph(triangleData);
+        let colors = Array.from({ length: triangleData.length }, () => -1);
+        let triangleGraph = buildTriangleGraph(triangleData);
         // Call DFS for each uncolored triangle
         for (let i = 0; i < triangleData.length; i++) {
-            colorTriangles(triangleGraph, i, colors, colorChoice);
-            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            const triangle = triangleData[i];
+            const vertices = new Float32Array(triangle);
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            gl.vertexAttribPointer(attributeCoords, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(attributeCoords);
+            colorTriangles(triangleGraph, i, colors, colorChoice, triangleData);
             gl.disableVertexAttribArray(attributeColor);
             gl.vertexAttrib3f(attributeColor, 0, 0, 0);
             gl.drawArrays(gl.LINE_LOOP, 0, 3);
         }
+        console.log(colors);
+        console.log(triangleData);
     }
     // Loop through each triangle and add its vertices to the buffer
         
