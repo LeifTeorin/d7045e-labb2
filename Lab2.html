@@ -30,6 +30,7 @@ const  vertexShaderSource =
        "attribute vec2 a_coords;\n" +
        "attribute vec3 a_color;\n" +
        "varying vec3 v_color;\n" +
+       "uniform vec3 u_color;\n" +
        "uniform float u_pointsize;\n" +
        "uniform float u_width;\n" +
        "uniform float u_height;\n" +
@@ -43,13 +44,22 @@ const  vertexShaderSource =
 
 const  fragmentShaderSource =
        "precision mediump float;\n" +
+       "uniform int uColorChoice;\n"+
        "varying vec3 v_color;\n" +
+       "varying lowp vec4 vColor;\n" +
+       "uniform vec2 uPointP;\n" +
        "void main() {\n" +
-       "   float distanceFromCenter = distance( gl_PointCoord, vec2(0.5,0.5) );\n" +
+       "   float distanceFromCenter = distance( gl_PointCoord, vec2(0.5,0.5));\n" +
        "   if ( distanceFromCenter >= 0.5) {\n" +
        "       discard;  // don't draw this pixel!\n" +
        "   }\n" +
-       "   gl_FragColor = vec4(v_color, 1.0);\n" +
+       "       gl_FragColor = vec4(v_color, 1.0);\n" +
+       /* // Calculate distance between the fragment and point P
+       "       float distance = distance(gl_FragCoord.xy, uPointP);\n" +
+        // Map the distance to a shade of gray (adjust this as needed)
+       "       float shade = 1.0 - smoothstep(0.0, 600.0, distance);\n" +
+        // Apply the shade to the fragment color
+       "       gl_FragColor = vec4(v_color.rgb * shade, 1.0);\n" + */
        "}\n";
 
 let  canvas;  // The canvas where WebGL draws.
@@ -154,6 +164,180 @@ function createPointData() { // called during initialization to fill the arrays 
     pointCoords = insertionSortByX(pointCoords);
 }
 
+function isLeft(x0, y0, x1, y1, x2, y2){
+    let value = ((x1 - x0)*(y2 - y0) - (x2 - x0)*(y1 - y0));
+        if(value > 0)
+            return false;
+        else (value <= 0)
+            return true;
+    }
+
+
+function isRight(x0, y0, x1, y1, x2, y2){
+    let value = ((x1 - x0)*(y2 - y0) - (x2 - x0)*(y1 - y0));
+        if(value >= 0)
+            return true;
+        else(value < 0)
+            return false;
+}
+
+function drawLine(x1, y1, x2, y2) {
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+}
+
+function createTriangleData(points) {
+    let upperHull = [];
+    let lowerHull = [];
+
+    if(isLeft(points[0], points[1], points[4], points[5], points[2], points[3])){
+        upperHull = upperHull.concat(points[0], points[1], points[2], points[3], points[4], points[5]);
+        lowerHull = lowerHull.concat(points[0], points[1], points[4], points[5]);   
+    }else{
+        upperHull = upperHull.concat(points[0], points[1],  points[4], points[5]) ;
+        lowerHull = lowerHull.concat(points[0], points[1], points[2], points[3], points[4], points[5]);
+    }
+
+    let triangles = [];
+    let firsttriangle = [points[0], points[1], points[2], points[3], points[4], points[5]];
+    triangles.push(firsttriangle);
+
+    for (let i = 6; i < points.length; i = i+2) {
+        let x = points[i];
+        let y = points[i+1];
+
+        for(let i = upperHull.length-1; i > 0; i = i-2 ){
+            if (isRight(x, y, upperHull[upperHull.length-2], upperHull[upperHull.length-1], upperHull[upperHull.length-4], upperHull[upperHull.length-3]) && upperHull.length >= 4){
+                // ta bort senaste satta värdet och pusha nya
+                let triangle = [x, y, upperHull[upperHull.length-2], upperHull[upperHull.length-1], upperHull[upperHull.length-4], upperHull[upperHull.length-3]];
+                triangles.push(triangle);
+
+                upperHull.pop();
+                upperHull.pop();
+            }else{
+                upperHull.push(x);
+                upperHull.push(y);
+                break;
+            }
+        }
+        // Kollar lowerHull
+        for(let i = lowerHull.length-1; i > 0; i = i-2 ){
+            
+            if (isLeft(x, y, lowerHull[lowerHull.length-2], lowerHull[lowerHull.length-1], lowerHull[lowerHull.length-4], lowerHull[lowerHull.length-3]) && lowerHull.length >= 4) {
+
+                let triangle = [x, y, lowerHull[lowerHull.length-2], lowerHull[lowerHull.length-1], lowerHull[lowerHull.length-4], lowerHull[lowerHull.length-3]];
+                triangles.push(triangle);
+
+                lowerHull.pop();
+                lowerHull.pop();
+            }else{
+                lowerHull.push(x);
+                lowerHull.push(y);
+                break;
+            }
+        }        
+    }
+
+    return triangles;
+}
+
+function calculateDistance(x1, y1, x2, y2, x3, y3, px, py) {
+    let centriodX = (x1 + x2 + x3) / 3;
+    let centriodY = (y1 + y2 + y3) / 3;
+    return Math.sqrt(Math.pow(px - centriodX, 2) + Math.pow(py - centriodY, 2));
+}
+
+function colorTriangles(triangleGraph, currentTriangle, colors, colorChoice) {
+    if (colors[currentTriangle] != []) {
+        // This triangle is already colored, stop recursion
+        return;
+    }
+
+    // Colors used by neighbors
+    const neighborColors = new Set();
+
+    // Remove current triangle temporarily
+    const originalColor = colors[currentTriangle];
+    colors[currentTriangle] = -1;
+
+    // Recursive DFS for neighbors
+    for (const neighbor of triangleGraph[currentTriangle]) {
+        colorTriangles(triangleGraph, neighbor, colors, colorChoice);
+        neighborColors.add(colors[neighbor]);
+    }
+
+    // Add current triangle back
+    colors[currentTriangle] = originalColor;
+
+    // Color the current triangle with an unused color
+    for (let c = 0; c < 4; c++) {
+        if (!neighborColors.has(c)) {
+            colors[currentTriangle] = c;
+
+            // Draw the triangle with the selected color
+            let color = getColorForIndex(c, colorChoice);
+            gl.disableVertexAttribArray(attributeColor);
+            gl.vertexAttrib3f(attributeColor, color[0], color[1], color[2]);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+            break;
+        }
+    }
+}
+
+function getColorForIndex(index, colorChoice) {
+    // Define colors based on the chosen color mode
+    if (colorChoice === 'Same') {
+        return [0.8, 0, 0.8];
+    } else if (colorChoice === 'Distance') {
+        // Assuming you have 'dist' and 'longestDist' defined elsewhere
+        const factor = 1 - dist / longestDist;
+        return [factor, 1 - 3 * factor, factor];
+    } else if (colorChoice === '4Color') {
+        // Define colors for each index in the 4-coloring
+        if (index === 0) return [1, 0, 0];  // Red
+        if (index === 1) return [0, 1, 0];  // Green
+        if (index === 2) return [0, 0, 1];  // Blue
+        if (index === 3) return [1, 1, 0];  // Yellow
+    }
+
+    // Default color (shouldn't happen)
+    return [1, 1, 1];
+}
+
+function buildTriangleGraph(triangleData) {
+    const triangleGraph = new Array(triangleData.length).fill([]);
+
+    // Helper function to check if two triangles share an edge
+    function shareEdge(triangle1, triangle2) {
+        let sharedVertices = 0;
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                if (
+                    triangle1[i * 2] === triangle2[j * 2] &&
+                    triangle1[i * 2 + 1] === triangle2[j * 2 + 1]
+                ) {
+                    sharedVertices++;
+                }
+            }
+        }
+        return sharedVertices === 2; // Triangles share exactly two vertices
+    }
+
+    // Build the triangle graph
+    for (let i = 0; i < triangleData.length; i++) {
+        for (let j = i + 1; j < triangleData.length; j++) {
+            if (shareEdge(triangleData[i], triangleData[j])) {
+                triangleGraph[i].push(j);
+                triangleGraph[j].push(i);
+            }
+        }
+    }
+
+    return triangleGraph;
+}
 
 /**
  *  Draws the content of the canvas, in this case, one primitive ot
@@ -180,15 +364,87 @@ function draw() {
     
     /* Draw all the points with one command. */
    
+    let colorChoice = document.getElementById("colorChoice").value;
+    let triangleData = createTriangleData(pointCoords);
+    let pX = 200;
+    let pY = 200;
+    if (colorChoice == 'Same'){
+        for (let i = 0; i < triangleData.length; i++) {
+            const triangle = triangleData[i];
+            const vertices = new Float32Array(triangle);
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            gl.vertexAttribPointer(attributeCoords, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(attributeCoords);
+
+            // Draw the triangle
+            gl.disableVertexAttribArray(attributeColor);
+            gl.vertexAttrib3f(attributeColor, 0, 0, 0);
+            gl.drawArrays(gl.LINE_LOOP, 0, 3);
+            gl.disableVertexAttribArray(attributeColor);
+            gl.vertexAttrib3f(attributeColor, 0.8, 0, 0.8);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+        
+    }else if (colorChoice == "Distance"){
+        for (let i = 0; i < triangleData.length; i++) {
+            const triangle = triangleData[i];
+            const vertices = new Float32Array(triangle);
+            let longestDist = Math.sqrt(Math.pow((canvas.width), 2) + Math.pow((canvas.height), 2));
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+            let dist = calculateDistance(triangle[0],triangle[1],triangle[2],triangle[3],triangle[4],triangle[5], pX, pY);
+            gl.vertexAttribPointer(attributeCoords, 2, gl.FLOAT, false, 0, 0);
+            gl.enableVertexAttribArray(attributeCoords);
+
+            // Draw the triangle
+            gl.disableVertexAttribArray(attributeColor);
+            gl.vertexAttrib3f(attributeColor, 0, 0, 0);
+            gl.drawArrays(gl.LINE_LOOP, 0, 3);
+            gl.disableVertexAttribArray(attributeColor);
+            gl.vertexAttrib3f(attributeColor, 1-(dist/longestDist), 1-3*(dist/longestDist), 1-(dist/longestDist));
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
+        
+    }else if (colorChoice == "4Color"){
+        // Assuming triangleGraph is an array of neighbors for each triangle
+        const colors = new Array(triangleData.length).fill([]);
+        const triangleGraph = buildTriangleGraph(triangleData);
+        // Call DFS for each uncolored triangle
+        for (let i = 0; i < triangleData.length; i++) {
+            colorTriangles(triangleGraph, i, colors, colorChoice);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+            gl.disableVertexAttribArray(attributeColor);
+            gl.vertexAttrib3f(attributeColor, 0, 0, 0);
+            gl.drawArrays(gl.LINE_LOOP, 0, 3);
+        }
+    }
+    // Loop through each triangle and add its vertices to the buffer
+        
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufferCoords);
+    gl.bufferData(gl.ARRAY_BUFFER, pointCoords, gl.STREAM_DRAW);
+    gl.vertexAttribPointer(attributeCoords, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(attributeCoords); 
+    gl.disableVertexAttribArray(attributeColor);
+    gl.vertexAttrib3f(attributeColor, 0, 0, 0);
     gl.drawArrays(gl.POINTS, 0, POINT_COUNT);
-    drawLines();
 }
 
-function drawLines(){
-    gl.enable(gl.CULL_FACE);
-    gl.frontFace(gl.CCW);
-    for (let i = 0; i < POINT_COUNT-2; i++){
+function fixList(arr){
+    let newList = [];
+    for(let i = 0; i < arr[0].length; i++){
+        newList = newList.concat(arr[i]);
+    }
+    return newList;
+}
+
+function drawLines(arr){
+     for(let i = 0; i < arr.length/2; i = i+1){
         gl.drawArrays(gl.LINE_LOOP, i, 3);
+    }
+}
+
+function drawTriangle(arr){
+    for(let i = 0; i < arr.length/2; i = i+3){
+        gl.drawArrays(gl.TRIANGLES, i, 3);
     }
 }
 
@@ -234,7 +490,14 @@ function initGL() {
     attributeColor = gl.getAttribLocation(prog, "a_color");
     bufferColor = gl.createBuffer();
     uniformHeight = gl.getUniformLocation(prog, "u_height");
+    const colorChoiceMode = (document.getElementById("colorChoice").value === 'Same') ? 0 : 1;
+    gl.uniform1i(gl.getUniformLocation(prog, 'uColorChoice'), colorChoiceMode);
+    const pX = 300;
+    const pY = 300;
     uniformWidth = gl.getUniformLocation(prog, "u_width");
+    const pointPLocation = gl.getUniformLocation(prog, "uPointP");
+    // Pass the point P coordinates to the shader
+    gl.uniform2fv(pointPLocation, [pX, pY]);
     gl.uniform1f(uniformHeight, canvas.height);
     gl.uniform1f(uniformWidth, canvas.width);
     uniformPointsize = gl.getUniformLocation(prog, "u_pointsize");
@@ -281,6 +544,9 @@ function init() {
         createPointData();
         draw();
     };
+    document.getElementById("colorChoice").onchange = function() {
+        draw();
+    };
     draw();
 }
 
@@ -299,6 +565,11 @@ window.onload = init;  // Arrange for init() to be called after page has loaded.
     <input type="range" min="3" max="100" value="50" id="numPointsRange"/>
 	Value: <span if="numPointsRange.value"></span>
 </p>
+<label><b>Colar:</b>&nbsp;<select id="colorChoice">
+    <option value="Same">Same</option>
+    <option value="Distance">Distance</option>
+    <option value="4Color">4 Colaring</option>
+</select></label>
 
 <div id="canvas-holder">
     <canvas id="webglcanvas" width="800" height="600"></canvas>
