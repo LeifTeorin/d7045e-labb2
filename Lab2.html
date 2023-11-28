@@ -82,7 +82,7 @@ let  animating = false;  // is the animation running?
    colors are used when the user selects colored rather than red points.
    The positions of the points are updated for each frame of the animation. */
 
-const  POINT_COUNT = 10;
+let  POINT_COUNT = 30;
 const  POINT_SIZE = 10;
 let  pointCoords = new Float32Array( 2*POINT_COUNT );
 const  pointRandomColors = new Float32Array( 3*POINT_COUNT );
@@ -154,7 +154,8 @@ function insertionSortByX(arr) {
     return arr;
 }
 
-function createPointData() { // called during initialization to fill the arrays with data.
+function createPointData(POINT_COUNT) { // called during initialization to fill the arrays with data.
+    let pointCoords = new Float32Array(POINT_COUNT*2)
     for (let i = 0; i < POINT_COUNT; i++) {
            // Each point has two coordinates and two velocities.  Velocity number k
            // tells how fast coordinate number k changes in pixels per frame.
@@ -162,6 +163,7 @@ function createPointData() { // called during initialization to fill the arrays 
         pointCoords[2*i+1] = canvas.height * Math.random();  // y-coordinate of point
     }
     pointCoords = insertionSortByX(pointCoords);
+    return pointCoords;
 }
 
 function isLeft(x0, y0, x1, y1, x2, y2){
@@ -296,7 +298,7 @@ function arraysEqual(arr1, arr2) {
 
 function getColorForIndex(index, colorChoice) {
     
-        // Define colors for each index in the 4-coloring
+    // Define colors for each index in the 4-coloring
     if (index === 0) return [1, 0, 0];  // Red
     if (index === 1) return [0, 1, 0];  // Green
     if (index === 2) return [0, 0, 1];  // Blue
@@ -342,7 +344,8 @@ function draw() {
 
     gl.clearColor(0.9,0.9,0.9,1);  // specify the color to be used for clearing
     gl.clear(gl.COLOR_BUFFER_BIT);  // clear the canvas (to black)
-    
+    let  POINT_COUNT =  Number(document.getElementById("numPointsRange").value);
+    let  pointCoords = createPointData(POINT_COUNT);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufferCoords);
     gl.bufferData(gl.ARRAY_BUFFER, pointCoords, gl.STREAM_DRAW);
     gl.vertexAttribPointer(attributeCoords, 2, gl.FLOAT, false, 0, 0);
@@ -361,8 +364,8 @@ function draw() {
    
     let colorChoice = document.getElementById("colorChoice").value;
     let triangleData = createTriangleData(pointCoords);
-    let pX = 200;
-    let pY = 200;
+    let pX = 400;
+    let pY = 300;
     if (colorChoice == 'Same'){
         for (let i = 0; i < triangleData.length; i++) {
             const triangle = triangleData[i];
@@ -493,7 +496,7 @@ function initGL() {
     uniformHeight = gl.getUniformLocation(prog, "u_height");
     const colorChoiceMode = (document.getElementById("colorChoice").value === 'Same') ? 0 : 1;
     gl.uniform1i(gl.getUniformLocation(prog, 'uColorChoice'), colorChoiceMode);
-    const pX = 300;
+    const pX = 400;
     const pY = 300;
     uniformWidth = gl.getUniformLocation(prog, "u_width");
     const pointPLocation = gl.getUniformLocation(prog, "uPointP");
@@ -502,7 +505,7 @@ function initGL() {
     gl.uniform1f(uniformHeight, canvas.height);
     gl.uniform1f(uniformWidth, canvas.width);
     uniformPointsize = gl.getUniformLocation(prog, "u_pointsize");
-    createPointData();
+    createPointData(POINT_COUNT);
     gl.bindBuffer(gl.ARRAY_BUFFER, bufferColor);
     gl.bufferData(gl.ARRAY_BUFFER, pointRandomColors, gl.STREAM_DRAW);
     gl.vertexAttribPointer(attributeColor, 3, gl.FLOAT, false, 0, 0);
@@ -540,9 +543,10 @@ function init() {
             "<p>Sorry, could not initialize the WebGL graphics context: " + e + "</p>";
         return;
     }
+    document.getElementById("numPointsRange").value = "10";
     document.getElementById("numPointsRange").onchange = function(){
-        POINT_COUNT = this.value;
-        createPointData();
+        POINT_COUNT = Number(this.value);
+        createPointData(POINT_COUNT);
         draw();
     };
     document.getElementById("colorChoice").onchange = function() {
@@ -562,10 +566,9 @@ window.onload = init;  // Arrange for init() to be called after page has loaded.
 
 <noscript><p><b>Sorry, but this page requires JavaScript.</b></p></noscript>
 
-<p>
-    <input type="range" min="3" max="100" value="50" id="numPointsRange"/>
-	Value: <span if="numPointsRange.value"></span>
-</p>
+<div class="slidecontainer">
+    <input type="range" min="3" max="30" value="10" class="slider" id="numPointsRange">
+</div>
 <label><b>Colar:</b>&nbsp;<select id="colorChoice">
     <option value="Same">Same</option>
     <option value="Distance">Distance</option>
