@@ -194,47 +194,52 @@ function createTriangleData(points) {
     let upperHull = [];
     let lowerHull = [];
 
-    if(isLeft(points[0], points[1], points[4], points[5], points[2], points[3])){
+    // Determine initial hulls based on orientation
+    if (isLeft(points[0], points[1], points[4], points[5], points[2], points[3])) {
+        // If points form a left turn, set upperHull and lowerHull accordingly
         upperHull = upperHull.concat(points[0], points[1], points[2], points[3], points[4], points[5]);
-        lowerHull = lowerHull.concat(points[0], points[1], points[4], points[5]);   
-    }else{
-        upperHull = upperHull.concat(points[0], points[1],  points[4], points[5]) ;
+        lowerHull = lowerHull.concat(points[0], points[1], points[4], points[5]);
+    } else {
+        // If points form a right turn, set upperHull and lowerHull accordingly
+        upperHull = upperHull.concat(points[0], points[1], points[4], points[5]);
         lowerHull = lowerHull.concat(points[0], points[1], points[2], points[3], points[4], points[5]);
     }
 
+    // Initialize triangles array and add the first triangle
     let triangles = [];
     let firsttriangle = [points[0], points[1], points[2], points[3], points[4], points[5]];
     triangles.push(firsttriangle);
 
+    // Iterate through the remaining points to construct triangles
     for (let i = 6; i < points.length; i = i+2) {
         let x = points[i];
         let y = points[i+1];
 
+        // Check upperHull for triangles
         for(let i = upperHull.length-1; i > 0; i = i-2 ){
             if (isRight(x, y, upperHull[upperHull.length-2], upperHull[upperHull.length-1], upperHull[upperHull.length-4], upperHull[upperHull.length-3]) && upperHull.length >= 4){
-                // ta bort senaste satta värdet och pusha nya
+                // If right turn, remove the last two points and add a new triangle
                 let triangle = [x, y, upperHull[upperHull.length-2], upperHull[upperHull.length-1], upperHull[upperHull.length-4], upperHull[upperHull.length-3]];
                 triangles.push(triangle);
-
                 upperHull.pop();
                 upperHull.pop();
             }else{
+                // If left turn or not enough points, add the current point to upperHull and break
                 upperHull.push(x);
                 upperHull.push(y);
                 break;
             }
         }
-        // Kollar lowerHull
+        // Check lowerHull for triangles
         for(let i = lowerHull.length-1; i > 0; i = i-2 ){
-            
             if (isLeft(x, y, lowerHull[lowerHull.length-2], lowerHull[lowerHull.length-1], lowerHull[lowerHull.length-4], lowerHull[lowerHull.length-3]) && lowerHull.length >= 4) {
-
+                // If left turn, remove the last two points and add a new triangle
                 let triangle = [x, y, lowerHull[lowerHull.length-2], lowerHull[lowerHull.length-1], lowerHull[lowerHull.length-4], lowerHull[lowerHull.length-3]];
                 triangles.push(triangle);
-
                 lowerHull.pop();
                 lowerHull.pop();
             }else{
+                // If right turn or not enough points, add the current point to lowerHull and break
                 lowerHull.push(x);
                 lowerHull.push(y);
                 break;
@@ -252,39 +257,58 @@ function calculateDistance(x1, y1, x2, y2, x3, y3, px, py) {
 }
 
 function colorTriangles(triangleGraph, currentTriangle, colors, colorChoice, allTriangles) {
+    // Check if the current triangle has already been colored
     if (colors[currentTriangle] !== -1) {
         return;
     }
+
     // Colors used by neighbors
     let neighborColors = [];
 
     // Remove current triangle temporarily
     let originalColor = colors[currentTriangle];
     colors[currentTriangle] = -1;
-    let neighbors = triangleGraph[currentTriangle]
-    if (neighbors.length !== 0){
+
+    // Get neighbors of the current triangle from the triangle graph
+    let neighbors = triangleGraph[currentTriangle];
+
+    // If the current triangle has neighbors, recursively color them
+    if (neighbors.length !== 0) {
         for (let i = 0; i < neighbors.length; i++) {
-            colorTriangles(triangleGraph, neighbors[i], colors, colorChoice);
+            // Recursively color the neighbors
+            colorTriangles(triangleGraph, neighbors[i], colors, colorChoice, allTriangles);
+            // Find the index of the neighbor in the list of all triangles
             let index = allTriangles.indexOf(neighbors[i]);
-            console.log("neighbors index: ", index)
+            // Display index of the neighbor in the console (for debugging purposes)
+            console.log("Neighbor's index: ", index);
+            console.log('Neighbor: ', neighbors[i]);
+            // Collect colors used by neighbors
             neighborColors.push(colors[index]);
         }
     }
-    // Add current triangle back
+
+    // Add current triangle back to its original color
     colors[currentTriangle] = originalColor;
 
     // Color the current triangle with an unused color
     for (let c = 0; c < 4; c++) {
         let color = getColorForIndex(c, colorChoice);
+
+        // Check if the current color is not used by any neighbor
         if (!neighborColors.some(color2 => arraysEqual(color2, color))) {
             // Draw the triangle with the selected color
             colors[currentTriangle] = color;
+            // Disable vertex attribute array for color
             gl.disableVertexAttribArray(attributeColor);
+            // Set the color attribute for the current triangle
             gl.vertexAttrib3f(attributeColor, color[0], color[1], color[2]);
+            // Draw the current triangle
             gl.drawArrays(gl.TRIANGLES, 0, 3);
+            // Break out of the loop once the triangle is colored
             break;
         }
     }
+
     return;
 }
 
@@ -406,6 +430,7 @@ function draw() {
         // Assuming triangleGraph is an array of neighbors for each triangle
         let colors = Array.from({ length: triangleData.length }, () => -1);
         let triangleGraph = buildTriangleGraph(triangleData);
+        console.log(triangleGraph);
         // Call DFS for each uncolored triangle
         for (let i = 0; i < triangleData.length; i++) {
             const triangle = triangleData[i];
@@ -418,8 +443,6 @@ function draw() {
             gl.vertexAttrib3f(attributeColor, 0, 0, 0);
             gl.drawArrays(gl.LINE_LOOP, 0, 3);
         }
-        console.log(colors);
-        console.log(triangleData);
     }
     // Loop through each triangle and add its vertices to the buffer
         
