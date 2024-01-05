@@ -87,52 +87,6 @@ const  POINT_SIZE = 10;
 let  pointCoords = new Float32Array( 2*POINT_COUNT );
 const  pointRandomColors = new Float32Array( 3*POINT_COUNT );
 
-function merge(left, right) {
-    let result = new Float32Array.subarray(left.length + right.length); // the sorted items will go here
-    let li = 0;
-    let ri = 0;
-    let i = 0
-    while (li < left.length || ri < right.length) {
-        // Insert the smallest item into sortedArr
-        if (left[li] < right[ri]) {
-            result[i] = left[li];
-            result[i + 1] = left[li + 1];
-            li += 2;
-        } else {
-            result[i] = right[ri];
-            result[i + 1] = right[ri + 1];
-            ri += 2;
-        }
-        i += 2;
-    }
-    // Append any remaining elements from left and right
-    while (li < left.length) {
-        result[i] = left[li];
-        result[i + 1] = left[li + 1];
-        li += 2;
-        i += 2;
-    }
-    while (ri < right.length) {
-        result[i] = right[ri];
-        result[i + 1] = right[ri + 1];
-        ri += 2;
-        i += 2;
-    }
-    // Use spread operators to create a new array, combining the three arrays
-    return result;
-}
-
-function mergeSort(arr) {
-  // Base case
-  if (arr.length <= 1) return arr;
-  let mid = Math.floor(arr.length / 2);
-  if (mid % 2 != 0) mid = mid+1;
-  // Recursive calls
-  let left = mergeSort(arr.slice(0, mid));
-  let right = mergeSort(arr.slice(mid));
-  return merge(left, right);
-}
-
 function insertionSortByX(arr) {
     const n = arr.length;
 
@@ -181,13 +135,6 @@ function isRight(x0, y0, x1, y1, x2, y2){
             return true;
         else(value < 0)
             return false;
-}
-
-function drawLine(x1, y1, x2, y2) {
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
 }
 
 function createTriangleData(points) {
@@ -454,27 +401,6 @@ function draw() {
     gl.vertexAttrib3f(attributeColor, 0, 0, 0);
     gl.drawArrays(gl.POINTS, 0, POINT_COUNT);
 }
-
-function fixList(arr){
-    let newList = [];
-    for(let i = 0; i < arr[0].length; i++){
-        newList = newList.concat(arr[i]);
-    }
-    return newList;
-}
-
-function drawLines(arr){
-     for(let i = 0; i < arr.length/2; i = i+1){
-        gl.drawArrays(gl.LINE_LOOP, i, 3);
-    }
-}
-
-function drawTriangle(arr){
-    for(let i = 0; i < arr.length/2; i = i+3){
-        gl.drawArrays(gl.TRIANGLES, i, 3);
-    }
-}
-
 
 /**
  * Creates a program for use in the WebGL context gl, and returns the
